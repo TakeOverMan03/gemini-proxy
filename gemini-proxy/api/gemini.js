@@ -7,7 +7,8 @@ export default async function handler(req, res) {
 
   try {
     const apiKey = process.env.GOOGLE_API_KEY;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+ const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-latest:generateContent?key=${apiKey}`;
+
 
     const body = req.body;
 

@@ -1,15 +1,14 @@
 // api/gemini.js
-// Ротация между несколькими ключами при превышении квоты.
-// Работает на Node 18+ (Vercel), глобальный fetch встроен.
-
-const apiKeys = [
-  process.env.GOOGLE_API_KEY_1, // новый ключ
-  process.env.GOOGLE_API_KEY_2  // запасной ключ
-];
+// Один ключ, без ротации. Работает на Node 18+ (Vercel)
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const apiKey = process.env.GOOGLE_API_KEY_1; // твой единственный ключ
+  if (!apiKey) {
+    return res.status(500).json({ error: 'API key is missing on server' });
   }
 
   const body = req.body;
@@ -23,53 +22,27 @@ export default async function handler(req, res) {
     { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
   ];
 
-  let lastError = null;
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    console.log(`▶️ Работаем с одним ключом`);
 
-  // 🔄 Перебираем ключи
-  for (let i = 0; i < apiKeys.length; i++) {
-    const key = apiKeys[i];
-    if (!key) continue; // пропускаем пустые
+    const gRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
-    console.log(`▶️ Пробую ключ #${i + 1}`);
+    const data = await gRes.json();
 
-    try {
-      const gRes = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const data = await gRes.json();
-
-      if (gRes.ok) {
-        // ✅ Успех — возвращаем клиенту
-        return res.status(200).json(data);
-      } else {
-        // Если квота кончилась — пробуем следующий
-        if (
-          data.error &&
-          data.error.message &&
-          data.error.message.toLowerCase().includes('quota')
-        ) {
-          console.warn(`⚠️ Ключ #${i + 1} исчерпан, переключаюсь на следующий…`);
-          lastError = data;
-          continue; // пробуем следующий ключ
-        } else {
-          // Другая ошибка — сразу возвращаем
-          return res.status(gRes.status).json(data);
-        }
-      }
-    } catch (err) {
-      console.error(`❌ Ошибка с ключом #${i + 1}:`, err);
-      lastError = err;
-      continue;
+    if (gRes.ok) {
+      // ✅ Успех — возвращаем клиенту
+      return res.status(200).json(data);
+    } else {
+      // ❌ Ошибка от Google
+      return res.status(gRes.status).json(data);
     }
+  } catch (err) {
+    console.error(`❌ Ошибка запроса:`, err);
+    return res.status(500).json({ error: 'Internal Server Error', details: err });
   }
-
-  // 🚫 Если все ключи кончились
-  res.status(429).json({
-    error: 'Все доступные API-ключи исчерпаны или недоступны',
-    details: lastError
-  });
 }
